@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     whisperx_device: str = "auto"
     whisperx_compute_type: str = "auto"
 
+    llm_base_url: str = "http://localhost:1234/v1"
+    llm_api_key: str = "local"
+    llm_model: str = "qwen2.5-7b-instruct"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
