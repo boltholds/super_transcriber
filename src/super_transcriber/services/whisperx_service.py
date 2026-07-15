@@ -49,13 +49,15 @@ class WhisperXService:
 
         print("Transcribing audio...")
 
-        result = model.transcribe(
-            audio,
-            batch_size=batch_size,
-            language=language,
-        )
-
-        self._cleanup(model)
+        try:
+            result = model.transcribe(
+                audio,
+                batch_size=batch_size,
+                language=language,
+            )
+        finally:
+            del model
+            self._cleanup_cuda()
 
         print("Loading alignment model...")
 
@@ -66,16 +68,18 @@ class WhisperXService:
 
         print("Aligning words...")
 
-        result = whisperx.align(
-            result["segments"],
-            align_model,
-            metadata,
-            audio,
-            self.device,
-            return_char_alignments=False,
-        )
-
-        self._cleanup(align_model)
+        try:
+            result = whisperx.align(
+                result["segments"],
+                align_model,
+                metadata,
+                audio,
+                self.device,
+                return_char_alignments=False,
+            )
+        finally:
+            del align_model
+            self._cleanup_cuda()
 
         print("Running diarization...")
 
@@ -94,10 +98,14 @@ class WhisperXService:
             if max_speakers is not None:
                 diarize_kwargs["max_speakers"] = max_speakers
 
-        diarize_segments = diarize_model(
-            audio,
-            **diarize_kwargs,
-        )
+        try:
+            diarize_segments = diarize_model(
+                audio,
+                **diarize_kwargs,
+            )
+        finally:
+            del diarize_model
+            self._cleanup_cuda()
 
         print("Assigning speakers...")
 
@@ -107,14 +115,16 @@ class WhisperXService:
         )
 
         segments = self._parse_segments(result)
-
-        return Transcript(
+        transcript = Transcript(
             audio_path=str(audio_path),
             language=language,
             model=self.model_name,
             device=self.device,
             segments=segments,
         )
+        del audio, diarize_segments, result
+        self._cleanup_cuda()
+        return transcript
 
     def _parse_segments(self, raw_result: dict) -> list[TranscriptSegment]:
         parsed: list[TranscriptSegment] = []
@@ -160,8 +170,7 @@ class WhisperXService:
 
         return "int8"
 
-    def _cleanup(self, obj: object) -> None:
-        del obj
+    def _cleanup_cuda(self) -> None:
         gc.collect()
 
         if self.device == "cuda":
